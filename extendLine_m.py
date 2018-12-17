@@ -44,7 +44,7 @@ from grass.pygrass.vector import geometry as geo
 from grass.pygrass.vector.table import get_path, Table, Columns
 import sqlite3
 path="$GISDBASE/$LOCATION_NAME/$MAPSET/sqlite/sqlite.db"
-
+import gc
 
 def cleanup():
     pass
@@ -286,15 +286,18 @@ def extendLine(map, maxlen=200, scale=0.5, debug=False):
 
 
     quiet=table_isectIn.filters.select('rowid','ext_len','nx','ny','near_cat','ntype')
-    quiet=table_isectIn.filters.order_by(['ext_len ASC'])
+#    quiet=table_isectIn.filters.order_by(['ext_len ASC'])
+    quiet=table_isectIn.filters.order_by('ext_len ASC')
     quiet=table_isectIn.filters.limit(1)
     table_extend = Table('extend',
                 connection=sqlite3.connect(get_path(path)))
-    table_extend.filters.select('cat')
-    cur=table_extend.execute()
-    updateCnt = 0
-    for row in cur.fetchall():
-        cat, = row
+
+# Code below was relplaced by commands above untill memory problem can be sorted
+#    table_extend.filters.select('cat')
+#    cur=table_extend.execute()
+#    updateCnt = 0
+#    for row in cur.fetchall():
+#        cat, = row
 #        quiet=table_isectIn.filters.where('from_cat={:d}'.format(cat))
 
 ##SELECT rowid, ext_len, nx, ny, near_cat, ntype FROM isectIn WHERE from_cat=32734 ORDER BY ext_len ASC LIMIT 1
@@ -342,20 +345,38 @@ def extendLine(map, maxlen=200, scale=0.5, debug=False):
                 to_database = "$GISDBASE/$LOCATION_NAME/$MAPSET/sqlite/sqlite.db",
                 to_table = "imatch",
                 where = wvar)
+# Memory problems?
+    if gc.isenabled():
+      print("Garbage collection enabled - forcing gc cycle")
+      gc.collect()
+    else:
+      print("Garbage collection not enabled")
+# Ensure tables are commited
+    table_extend.conn.commit()
+    table_imatch.conn.commit()
+    table_isectIn.conn.commit()
 # Identify the jilted
     sqlStr = "SELECT extend.cat FROM extend JOIN imatch ON extend.other_cat=imatch.cat WHERE extend.xtype='ext' and extend.cat!=imatch.other_cat"
     cur=table_extend.execute(sql_code=sqlStr)
+    updateCnt = 0
     for row in cur.fetchall():
         cat, = row
         print("Reworking extend.cat={}".format(cat))
         quiet=table_isectIn.filters.where('from_cat={:d}'.format(cat))
-        x_sect=table_isectIn.execute().fetchone()
+        #print("SQL: {}".format(table_isectIn.filters.get_sql()))
+        x_sect=table_isectIn.execute().fetchone()  ## Problem here under modules
         if x_sect is None:
             sqlStr="UPDATE extend SET best_xid=0, x_len=search_len, near_x=0, near_y=0, other_cat=0, xtype='null' WHERE cat={:d}".format(cat)
         else:
             x_rowid, ext_len, nx, ny, other_cat, ntype = x_sect
             sqlStr="UPDATE extend SET best_xid={:d}, x_len={:.8f}, near_x={:.8f}, near_y={:.8f}, other_cat={:d}, xtype='{}' WHERE cat={:d}".format(x_rowid, ext_len, nx, ny, other_cat, ntype, cat) 
         table_extend.execute(sql_code=sqlStr)
+## Try periodic commit to avoide crash! 
+        updateCnt = (updateCnt + 1) % 1000
+        if (updateCnt == 0) or (cat == 750483):
+            print("XXXXXXXXXXX Committing table_extend XXXXXXXXXXXXXXXXXXXXXX")
+            table_extend.conn.commit()
+
     print("Committing adjustments to table extend")
     table_extend.conn.commit()
 #
@@ -395,7 +416,8 @@ def extendLine(map, maxlen=200, scale=0.5, debug=False):
 
 # Open up the original (copy) and work through looking for lines that need modifying
     inMap=VectorTopo(map+"_extend")
-    inMap.open('rw')
+    inMap.open('rw', tab_name = map+"_extend")
+
     for ln_idx in range(len(inMap)):
         ln = inMap.read(ln_idx+1)
         if ln.gtype==2: # Only process lines
@@ -418,6 +440,12 @@ def extendLine(map, maxlen=200, scale=0.5, debug=False):
                 quiet=inMap.rewrite(ln_idx+1,ln)
         else:
             quite=inMap.delete(ln_idx+1)
+## Try periodic commit and garbage collection to avoide crash! 
+        if (ln_idx % 1000) == 0:
+#           inMap.table.conn.commit()  - no such thing - Why??
+            if gc.isenabled():
+              quiet = gc.collect()
+
     inMap.close(build=True, release=True)
     print("extendLines completing")
 #
