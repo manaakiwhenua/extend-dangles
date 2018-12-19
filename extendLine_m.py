@@ -372,8 +372,8 @@ def extendLine(map, maxlen=200, scale=0.5, debug=False):
             sqlStr="UPDATE extend SET best_xid={:d}, x_len={:.8f}, near_x={:.8f}, near_y={:.8f}, other_cat={:d}, xtype='{}' WHERE cat={:d}".format(x_rowid, ext_len, nx, ny, other_cat, ntype, cat) 
         table_extend.execute(sql_code=sqlStr)
 ## Try periodic commit to avoide crash! 
-        updateCnt = (updateCnt + 1) % 1000
-        if (updateCnt == 0) or (cat == 750483):
+        updateCnt = (updateCnt + 1) % 100
+        if (updateCnt == 0): # or (cat == 750483):
             print("XXXXXXXXXXX Committing table_extend XXXXXXXXXXXXXXXXXXXXXX")
             table_extend.conn.commit()
 
