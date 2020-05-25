@@ -11,6 +11,8 @@
 #               License (version 2). Read the file COPYING that comes with GRASS
 #               for details.
 #
+# TODO
+#    Should cater for boundaries also?
 #######################################################################################
 
 #%module
@@ -29,7 +31,7 @@
 
 #%option G_OPT_V_OUTPUT
 #% key: map_out
-#% description: Name of output vector map (default: 'input'_extend)
+#% description: Output vector map with extensions (modifies Input map by default)
 #% required: no
 #% guisection: Output
 #%end
@@ -55,12 +57,13 @@
 #% description: Provides additional debug messages and output
 #%end
 
+import os
 import sys
 import atexit
 import math
 import grass.script as grass
 
-from grass.script import parser, run_command
+from grass.script import run_command
 from grass.pygrass.vector import VectorTopo
 from grass.pygrass.vector import geometry as geo
 from grass.pygrass.vector.table import get_path, Table, Columns
@@ -80,11 +83,8 @@ def extendLine(map, map_out, maxlen=200, scale=0.5, debug=False, verbose=1):
 # vlen=number of verticies to look back in calculating line end direction (def=1)
 # Not sure if it is worth putting this in as parameter.
 #
-    if not map_out:
-        map_out = map+'_extend'
-
+    allowOverwrite = os.getenv('GRASS_OVERWRITE', '0') == '1'
     grass.info("map={}, map_out={}, maxlen={}, scale={}, debug={}".format(map, map_out, maxlen, scale, debug))
-    #print("map={}, map_out={}, maxlen={}, scale={}, debug={}".format(map, map_out, maxlen, scale, debug))
     vlen = 1 # not sure if this is worth putting in as parameter
     cols = [(u'cat',        'INTEGER PRIMARY KEY'),
             (u'parent',     'INTEGER'),
@@ -113,18 +113,11 @@ def extendLine(map, map_out, maxlen=200, scale=0.5, debug=False, verbose=1):
     dangleCnt=0
     tickLen=len(inMap)
     grass.info("Searching {} features for dangles".format(tickLen))
-    #print("Searching {} features for dangles".format(tickLen))
-    #tickTrig=round(tickLen/20)
-    #progress=0
     ticker=0
     grass.message("Percent complete...")
     for ln in inMap:
-        #ticker = (ticker + 1) % tickTrig
         ticker = (ticker + 1)
         grass.percent(ticker,tickLen,5)
-        #if ticker == 0:
-        #  progress = progress+5
-        #  print("Progress={}%".format(progress))
         if ln.gtype==2: # Only process lines
             for nd in ln.nodes():
                 if nd.nlines == 1:   # We have a dangle
@@ -152,9 +145,7 @@ def extendLine(map, map_out, maxlen=200, scale=0.5, debug=False, verbose=1):
                     extLine = geo.Line([(sx,sy),(ex,ey)])
                     quiet=extend.write(extLine, (ln.cat,dend,sx,sy,extLen,endaz,0,0,0,0,'null',extLen))
 
-    grass.percent(1,1,1)
     grass.info("{} dangle nodes found, committing table extend".format(dangleCnt))
-    #print("{} dangle nodes found, committing table extend".format(dangleCnt))
     extend.table.conn.commit()
     extend.close(build=True, release=True)
     inMap.close()
@@ -166,7 +157,6 @@ def extendLine(map, map_out, maxlen=200, scale=0.5, debug=False, verbose=1):
 #
 # First the intersects with original lines
     grass.info("Searching for intersects between potential extensions and original lines")
-    #print("Searching for intersects between potential extensions and original lines") 
     table_isectIn = Table('isectIn',
                 connection=sqlite3.connect(get_path(path)))
     if table_isectIn.exist():
@@ -200,7 +190,6 @@ def extendLine(map, map_out, maxlen=200, scale=0.5, debug=False, verbose=1):
 # Now second self intersect table
 #
     grass.info("Searching for intersects of potential extensions")
-    #print("Searching for intersects of potential extensions") 
     table_isectX = Table('isectX',
                 connection=sqlite3.connect(get_path(path)))
     if table_isectX.exist():
@@ -255,7 +244,6 @@ def extendLine(map, map_out, maxlen=200, scale=0.5, debug=False, verbose=1):
 # For each intersect point, calculate the distance along extension line from end of dangle
 # Would be nicer to do this in the database but SQLite dosen't support sqrt or exponents
     grass.info("Calculating distances of intersects along potential extensions")
-    #print("Calculating distances of intersects along potential extensions")
     cur=table_isectIn.execute(sql_code="SELECT rowid, from_x, from_y, nx, ny FROM isectIn")
     for row in cur.fetchall():
         rowid,fx,fy,nx,ny = row
@@ -263,7 +251,6 @@ def extendLine(map, map_out, maxlen=200, scale=0.5, debug=False, verbose=1):
         sqlStr="UPDATE isectIn SET ext_len={:.8f} WHERE rowid={:d}".format(x_len,rowid)
         table_isectIn.execute(sql_code=sqlStr)
     grass.verbose("Ready to commit isectIn changes")
-    #print("Ready to commit isectIn changes")
     table_isectIn.conn.commit()
 # Remove any zero distance from end of their dangle.
 # This happens when another extension intersects exactly at that point
@@ -275,7 +262,6 @@ def extendLine(map, map_out, maxlen=200, scale=0.5, debug=False, verbose=1):
 
 # Go through the extensions and find the intersect closest to each origin.
     grass.info("Searching for closest intersect for each potential extension")
-    #print("Searching for closest intersect for each potential extension") 
 
 # db.execute sql="ALTER TABLE extend_t1 ADD COLUMN bst INTEGER"
 # db.execute sql="ALTER TABLE extend_t1 ADD COLUMN nrx DOUBLE PRECISION"
@@ -287,46 +273,37 @@ def extendLine(map, map_out, maxlen=200, scale=0.5, debug=False, verbose=1):
 #               database = "$GISDBASE/$LOCATION_NAME/$MAPSET/sqlite/sqlite.db")
 
     grass.verbose("CREATE index")
-    #print("CREATE index")
     run_command("db.execute",
                 sql = "CREATE INDEX idx_from_cat ON isectIn (from_cat)",
                 driver = "sqlite", database = "$GISDBASE/$LOCATION_NAME/$MAPSET/sqlite/sqlite.db")
     grass.verbose("UPDATE best_xid")
-    #print("UPDATE best_xid")
     run_command("db.execute",
                 sql = "UPDATE extend SET best_xid = (SELECT isectIn.rowid FROM isectIn WHERE from_cat=extend.cat ORDER BY ext_len ASC LIMIT 1)",
                 driver = "sqlite", database = "$GISDBASE/$LOCATION_NAME/$MAPSET/sqlite/sqlite.db")
     grass.verbose("UPDATE x_len")
-    #print("UPDATE x_len")
     run_command("db.execute",
                 sql = "UPDATE extend SET x_len = (SELECT ext_len FROM isectIn WHERE from_cat=extend.cat ORDER BY ext_len ASC LIMIT 1)",
                 driver = "sqlite", database = "$GISDBASE/$LOCATION_NAME/$MAPSET/sqlite/sqlite.db")
     grass.verbose("UPDATE near_x")
-    #print("UPDATE near_x")
     run_command("db.execute",
                 sql = "UPDATE extend SET near_x = (SELECT nx FROM isectIn WHERE from_cat=extend.cat ORDER BY ext_len ASC LIMIT 1)",
                 driver = "sqlite", database = "$GISDBASE/$LOCATION_NAME/$MAPSET/sqlite/sqlite.db")
     grass.verbose("UPDATE near_y")
-    #print("UPDATE near_y")
     run_command("db.execute",
                 sql = "UPDATE extend SET near_y = (SELECT ny FROM isectIn WHERE from_cat=extend.cat ORDER BY ext_len ASC LIMIT 1)",
                 driver = "sqlite", database = "$GISDBASE/$LOCATION_NAME/$MAPSET/sqlite/sqlite.db")
     grass.verbose("UPDATE other_cat")
-    #print("UPDATE other_cat")
     run_command("db.execute",
                 sql = "UPDATE extend SET other_cat = (SELECT near_cat FROM isectIn WHERE from_cat=extend.cat ORDER BY ext_len ASC LIMIT 1)",
                 driver = "sqlite", database = "$GISDBASE/$LOCATION_NAME/$MAPSET/sqlite/sqlite.db")
     grass.verbose("UPDATE xtype")
-    #print("UPDATE xtype")
     run_command("db.execute",
                 sql = "UPDATE extend SET xtype = (SELECT ntype FROM isectIn WHERE from_cat=extend.cat ORDER BY ext_len ASC LIMIT 1)",
                 driver = "sqlite", database = "$GISDBASE/$LOCATION_NAME/$MAPSET/sqlite/sqlite.db")
     grass.verbose("DROP index")
-    #print("DROP index")
     run_command("db.execute", sql = "DROP INDEX idx_from_cat",
                 driver = "sqlite", database = "$GISDBASE/$LOCATION_NAME/$MAPSET/sqlite/sqlite.db")
     grass.verbose("CREATE index on near_cat")
-    #print("CREATE index on near_cat")
     run_command("db.execute",
                 sql = "CREATE INDEX idx_near_cat ON isectIn (near_cat)",
                 driver = "sqlite", database = "$GISDBASE/$LOCATION_NAME/$MAPSET/sqlite/sqlite.db")
@@ -359,7 +336,6 @@ def extendLine(map, map_out, maxlen=200, scale=0.5, debug=False, verbose=1):
 #            if updateCnt == 0:
 #              table_extend.conn.commit()
     grass.verbose("Ready to commit extend changes")
-    #print("Ready to commit extend changes")
     table_extend.conn.commit()
 #
 # There may be extensions that crossed, and that intersection chosen by one but 
@@ -367,25 +343,21 @@ def extendLine(map, map_out, maxlen=200, scale=0.5, debug=False, verbose=1):
 # Need to remove those possibilities and allow the jilted extension to re-search.
 #
     grass.verbose("Deleting intersects already resolved")
-    #print("Deleting intersects already resolved")
     run_command("db.execute",
                 sql = "DELETE FROM isectIn WHERE rowid IN (SELECT isectIn.rowid FROM isectIn JOIN extend ON near_cat=cat WHERE ntype='ext' AND xtype!='null')",  #"AND from_cat!=other_cat" no second chance!
                 driver = "sqlite",
                 database = "$GISDBASE/$LOCATION_NAME/$MAPSET/sqlite/sqlite.db")
     table_isectIn.conn.commit()
     grass.verbose("Deleting complete")
-    #print("Deleting complete")
 
 # To find the jilted - need a copy of extensions that have found an 
 # intersection (won't overwrite so drop first)
     grass.verbose("Re-searching for mis-matched intersects between potential extensions")
-    #print("Re-searching for mis-matched intersects between potential extensions") 
     table_imatch = Table('imatch',
                 connection=sqlite3.connect(get_path(path)))
     if table_imatch.exist():
         table_imatch.drop(force=True)
     wvar="xtype!='null'"
-#    print(wvar)
     run_command("db.copy",
 	        overwrite = True,
                 quiet = True,
@@ -399,11 +371,9 @@ def extendLine(map, map_out, maxlen=200, scale=0.5, debug=False, verbose=1):
 # Memory problems?
     if gc.isenabled():
       grass.verbose("Garbage collection enabled - forcing gc cycle")
-      #print("Garbage collection enabled - forcing gc cycle")
       gc.collect()
     else:
       grass.verbose("Garbage collection not enabled")
-      #print("Garbage collection not enabled")
 # Ensure tables are commited
     table_extend.conn.commit()
     table_imatch.conn.commit()
@@ -415,7 +385,6 @@ def extendLine(map, map_out, maxlen=200, scale=0.5, debug=False, verbose=1):
     for row in cur.fetchall():
         cat, = row
         grass.verbose("Reworking extend.cat={}".format(cat))
-        #print("Reworking extend.cat={}".format(cat))
         quiet=table_isectIn.filters.where('from_cat={:d}'.format(cat))
         #print("SQL: {}".format(table_isectIn.filters.get_sql()))
         x_sect=table_isectIn.execute().fetchone()  ## Problem here under modules
@@ -429,11 +398,9 @@ def extendLine(map, map_out, maxlen=200, scale=0.5, debug=False, verbose=1):
         updateCnt = (updateCnt + 1) % 100
         if (updateCnt == 0): # or (cat == 750483):
             grass.verbose("XXXXXXXXXXX Committing table_extend XXXXXXXXXXXXXXXXXXXXXX")
-            #print("XXXXXXXXXXX Committing table_extend XXXXXXXXXXXXXXXXXXXXXX")
             table_extend.conn.commit()
 
     grass.verbose("Committing adjustments to table extend")
-    #print("Committing adjustments to table extend")
     table_extend.conn.commit()
 #
 # For debugging, create a map with the chosen intersect points
@@ -453,12 +420,21 @@ def extendLine(map, map_out, maxlen=200, scale=0.5, debug=False, verbose=1):
                 where = wvar,
                 output = "chosen")
 #
-# Finally adjust the dangle lines in input map - use a copy till it's all debugged!
+# Finally adjust the dangle lines in input map - use a copy (map_out) if requested
 #
-    run_command("g.copy",
-                overwrite = True,
-                quiet = True,
-                vector = map+","+map_out)
+    if map_out:
+        run_command("g.copy",
+                    overwrite = allowOverwrite,
+                    quiet = True,
+                    vector = map+","+map_out)
+    else:                       # Otherwise just modify the original dataset (map)
+        if allowOverwrite:
+            grass.warning("Modifying vector map ({})".format(map))
+            map_out = map
+        else:
+            grass.error("Use switch --o to modifying input vector map ({})".format(map))
+            return 1
+#
 # Get info for lines that need extending
     table_extend.filters.select('parent, dend, near_x, near_y, search_az, xtype')
     table_extend.filters.where("xtype!='null'")
@@ -466,13 +442,10 @@ def extendLine(map, map_out, maxlen=200, scale=0.5, debug=False, verbose=1):
     cat_mods=[ext[0] for ext in extLines]
     tickLen=len(cat_mods)
     grass.info("Extending {} dangles".format(tickLen))
-    #print("Extending {} dangles".format(tickLen))
-    tickTrig=round(tickLen/20)
-    #progress=0
     ticker=0
     grass.message("Percent complete...")
 
-# Open up the original (copy) and work through looking for lines that need modifying
+# Open up the map_out copy (or the original) and work through looking for lines that need modifying
     inMap=VectorTopo(map_out)
     inMap.open('rw', tab_name = map_out)
 
@@ -480,12 +453,8 @@ def extendLine(map, map_out, maxlen=200, scale=0.5, debug=False, verbose=1):
         ln = inMap.read(ln_idx+1)
         if ln.gtype==2: # Only process lines
             while ln.cat in cat_mods:      # Note: could be 'head' and 'tail'
-                #ticker = (ticker + 1) % tickTrig
                 ticker = (ticker + 1)
                 grass.percent(ticker,tickLen,5)
-                #if ticker == 0:
-                #  progress = progress+5
-                #  print("Progress={}%".format(progress))
                 cat_idx=cat_mods.index(ln.cat)
                 cat, dend, nx, ny, endaz, xtype  = extLines.pop(cat_idx)
                 dump = cat_mods.pop(cat_idx)
@@ -507,9 +476,7 @@ def extendLine(map, map_out, maxlen=200, scale=0.5, debug=False, verbose=1):
               quiet = gc.collect()
 
     inMap.close(build=True, release=True)
-    grass.percent(1,1,1)
     grass.message("v.extendlines completing")
-    #print("v.extendlines completing")
 #
 # Clean up temporary tables and maps                    
 #
@@ -524,12 +491,10 @@ def extendLine(map, map_out, maxlen=200, scale=0.5, debug=False, verbose=1):
     return 0
 
 if __name__ == "__main__":
-    options, flags = parser()
+    options, flags = grass.parser()
     atexit.register(cleanup)
     if not options['maxlen']:
         options['maxlen'] = 200
     if not options['scale']:
         options['scale'] = 0.5
-    print(flags)
     sys.exit(extendLine(map=options['map'], map_out=options['map_out'], maxlen=options['maxlen'], scale=options['scale'], debug=flags['d']))
-
