@@ -8,7 +8,7 @@
 # COPYRIGHT:    (C) 2015 by David Pairman, Manaaki Whenua - Landcare Research
 #
 #               This program is free software under the GNU General Public
-#               License (version 2). Read the file COPYING that comes with GRASS
+#               License (version 3). Read the file COPYING that comes with GRASS
 #               for details.
 #
 # TODO
