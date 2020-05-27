@@ -19,6 +19,11 @@ Two options control the lenght that the line (dangle) can be extended, being the
 
 See also: <em><a href="https://desktop.arcgis.com/en/arcmap/10.3/tools/editing-toolbox/extend-line.htm">ArcMap Extend Line</a></em>
 
+# Instillation
+Install from a GRASS command line using
+
+`g.extension extension=v.extendline url=https://github.com/manaakiwhenua/extend-dangles`
+
 # Reference
 
 This software is used in Manaaki Whenua's paddock boundary segmentation work.
