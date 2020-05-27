@@ -21,7 +21,11 @@ See also: <em><a href="https://desktop.arcgis.com/en/arcmap/10.3/tools/editing-t
 
 # Reference
 
-This software is used in Manaaki Whenua's paddock boundary segmentation work (Boundary Delineation of Agricultural Fields in Multitemporal Satellite Imagery, https://doi.org/10.1109/JSTARS.2018.2884513.
+This software is used in Manaaki Whenua's paddock boundary segmentation work.
+
+*Citation:*
+
+North, H.; Pairman, D.; Belliss, S. (2019) **Boundary Delineation of Agricultural Fields in Multitemporal Satellite Imagery**, in IEEE Journal of Selected Topics in Applied Earth Observations and Remote Sensing, vol. 12, no. 1, pp. 237-251, https://doi.org/10.1109/JSTARS.2018.2884513.
 
 # License
 
