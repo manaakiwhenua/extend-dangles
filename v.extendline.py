@@ -5,7 +5,7 @@
 # MODULE:       v.extendline
 # AUTHOR(S):    David Pairman <pairmand landcareresearch.co.nz>
 # PURPOSE:      Extends vector line dangles (simmilar to ARC function of the same name)
-# COPYRIGHT:    (C) 2015 by David Pairman, Manaaki Whenua - Landcare Research
+# COPYRIGHT:    (C) 2015 Landcare Research New Zealand Ltd
 #
 #               This program is free software under the GNU General Public
 #               License (version 3). Read the file COPYING that comes with GRASS

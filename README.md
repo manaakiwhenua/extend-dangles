@@ -1,3 +1,6 @@
+[![manaakiwhenua-standards](https://github.com/manaakiwhenua/extend-dangles/workflows/manaakiwhenua-standards/badge.svg)](https://github.com/manaakiwhenua/manaakiwhenua-standards)
+
+
 # extend-dangles - GRASS Addon
 Author:    David Pairman <pairmand landcareresearch.co.nz>
   
@@ -34,9 +37,8 @@ North, H.; Pairman, D.; Belliss, S. (2019) **Boundary Delineation of Agricultura
 
 # License
 
-Copyright:    (C) 2015 by David Pairman, Manaaki Whenua - Landcare Research
+Copyright:    (C) 2015 Landcare Research New Zealand Ltd
 
 This program is free software under the GNU General Public
 License (version 3). Read the file COPYING that comes with GRASS
 for details.
-
