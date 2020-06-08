@@ -4,7 +4,7 @@
 #
 # MODULE:       v.extendline
 # AUTHOR(S):    David Pairman <pairmand landcareresearch.co.nz>
-# PURPOSE:      Extends vector line dangles (simmilar to ARC function of the same name)
+# PURPOSE:      Extends vector line dangles (similar to ARC function of the same name)
 # COPYRIGHT:    (C) 2015 Landcare Research New Zealand Ltd
 #
 #               This program is free software under the GNU General Public
